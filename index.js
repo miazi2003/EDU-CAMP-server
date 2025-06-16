@@ -19,14 +19,8 @@ app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.3crt5al.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-
-
-
-
-
-
 const verifyToken = (req, res, next) => {
-  console.log("cookie",req.cookies);
+  console.log("cookie", req.cookies);
 
   const token = req?.cookies?.token;
 
@@ -39,31 +33,10 @@ const verifyToken = (req, res, next) => {
       return req.status(401).send({ message: "unauthorized access" });
     }
     req.decoded = decoded;
-    console.log("decoded ",decoded);
+    console.log("decoded ", decoded);
     next();
   });
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -80,29 +53,24 @@ async function run() {
     const createCollection = database.collection("assignment-create");
     const submittedCollection = database.collection("assignment-submit");
 
-
-
-
-
+    //jwt token creation
 
     app.post("/jwt", async (req, res) => {
       const userInfo = req?.body;
-    console.log(userInfo)
+      console.log(userInfo);
       const token = jwt.sign(userInfo, process.env.JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRE,
       });
-      console.log(token)
+      console.log(token);
       res.cookie("token", token, {
         httpOnly: true,
         secure: false,
-        sameSite: 'Lax',
+        sameSite: "Lax",
       });
       res.send({ success: true });
     });
 
-
-
-
+    //get all assignment data
 
     app.get("/createAssignment", async (req, res) => {
       const cursor = createCollection.find();
@@ -110,6 +78,7 @@ async function run() {
       res.send(result);
     });
 
+    //create assignment api
     app.post("/createAssignment", async (req, res) => {
       const newAssignment = req.body;
 
@@ -117,10 +86,14 @@ async function run() {
       res.send(result);
     });
 
+    //delete assignment api
+
     app.post("/deleteAssignment/:id", async (req, res) => {
       const id = req.params.id;
       const userEmail = req.body.email;
       console.log(userEmail);
+
+     
       const query = {
         _id: new ObjectId(id),
         email: userEmail,
@@ -129,6 +102,8 @@ async function run() {
       res.send(result);
     });
 
+    //view assignment api
+
     app.get("/viewAssignment/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -136,7 +111,9 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/allAssignment/:id", async (req, res) => {
+    //update function get api
+
+    app.get("/updateAllAssignment/:id", async (req, res) => {
       const id = req.params.id;
 
       const result = await createCollection.findOne({ _id: new ObjectId(id) });
@@ -144,10 +121,15 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/submittedAssignment", async (req, res) => {
+    //submit api
+    app.post("/submittedAssignment", verifyToken, async (req, res) => {
       const newSubmit = req.body;
 
       const { email, assignmentId } = newSubmit;
+
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
 
       const exist = await submittedCollection.findOne({ email, assignmentId });
       console.log(exist);
@@ -162,20 +144,21 @@ async function run() {
       res.send(result);
     });
 
+    //get api for submission
+
     app.get("/submittedAssignment", verifyToken, async (req, res) => {
       const email = req.query.email;
       console.log(email);
 
-       if(email !== req.decoded.email){
-
-        return res.status(403).send({message : "forbidden access"})
-
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
       }
       const query = { email: email };
       const result = await submittedCollection.find(query).toArray();
       res.send(result);
     });
 
+    //give mark get api
     app.get("/markAssignment/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -183,6 +166,7 @@ async function run() {
       res.send(result);
     });
 
+    //update assignment put api
     app.put("/updateAssignment/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -196,7 +180,9 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/pendingAssignment", async (req, res) => {
+    //pending get api
+
+    app.get("/pendingAssignment", verifyToken, async (req, res) => {
       const status = req.query.status;
 
       const query = { status: status };
@@ -204,11 +190,15 @@ async function run() {
       res.send(result);
     });
 
-    app.put("/updateAssignmentSubmit/:id", async (req, res) => {
+    //give mark put api
+
+    app.put("/updateAssignmentSubmit/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const { result, email } = req.body;
 
-      // Make sure the assignment with that ID and email exists
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
 
       const query = {
         _id: new ObjectId(id),
@@ -236,6 +226,27 @@ async function run() {
         updateDoc
       );
       res.send(resultUpdate);
+    });
+
+    //all assignment search api
+
+    app.get("/searchAssignment", async (req, res) => {
+      const key = req.query.search;
+      console.log("key", key);
+      let query = {};
+
+      if (key) {
+        query = {
+          $or: [
+            { title: { $regex: key, $options: "i" } },
+            { description: { $regex: key, $options: "i" } },
+            { difficulty: { $regex: key, $options: "i" } },
+          ],
+        };
+      }
+
+      const result = await createCollection.find(query).toArray();
+      res.send(result);
     });
 
     // Connect the client to the server	(optional starting in v4.7)
