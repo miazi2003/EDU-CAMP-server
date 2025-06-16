@@ -2,14 +2,68 @@ const express = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 3000;
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 const cors = require("cors");
 require("dotenv").config();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: `http://localhost:5173`,
+    credentials: true,
+  })
+);
 
 app.use(express.json());
+app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.3crt5al.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+
+
+
+
+
+
+
+const verifyToken = (req, res, next) => {
+  console.log("cookie",req.cookies);
+
+  const token = req?.cookies?.token;
+
+  if (!token) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return req.status(401).send({ message: "unauthorized access" });
+    }
+    req.decoded = decoded;
+    console.log("decoded ",decoded);
+    next();
+  });
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -25,6 +79,30 @@ async function run() {
     const database = client.db("edu-camp");
     const createCollection = database.collection("assignment-create");
     const submittedCollection = database.collection("assignment-submit");
+
+
+
+
+
+
+    app.post("/jwt", async (req, res) => {
+      const userInfo = req?.body;
+    console.log(userInfo)
+      const token = jwt.sign(userInfo, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRE,
+      });
+      console.log(token)
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'Lax',
+      });
+      res.send({ success: true });
+    });
+
+
+
+
 
     app.get("/createAssignment", async (req, res) => {
       const cursor = createCollection.find();
@@ -60,10 +138,9 @@ async function run() {
 
     app.get("/allAssignment/:id", async (req, res) => {
       const id = req.params.id;
- 
 
       const result = await createCollection.findOne({ _id: new ObjectId(id) });
- 
+
       res.send(result);
     });
 
@@ -85,11 +162,24 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/submittedAssignment", async (req, res) => {
+    app.get("/submittedAssignment", verifyToken, async (req, res) => {
       const email = req.query.email;
       console.log(email);
+
+       if(email !== req.decoded.email){
+
+        return res.status(403).send({message : "forbidden access"})
+
+      }
       const query = { email: email };
       const result = await submittedCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.get("/markAssignment/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await submittedCollection.findOne(query);
       res.send(result);
     });
 
@@ -97,13 +187,55 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const newAssignment = req.body;
-      console.log(newAssignment)
+      console.log(newAssignment);
       const updateDoc = {
         $set: newAssignment,
       };
       const option = { upsert: true };
       const result = await createCollection.updateOne(query, updateDoc, option);
       res.send(result);
+    });
+
+    app.get("/pendingAssignment", async (req, res) => {
+      const status = req.query.status;
+
+      const query = { status: status };
+      const result = await submittedCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.put("/updateAssignmentSubmit/:id", async (req, res) => {
+      const id = req.params.id;
+      const { result, email } = req.body;
+
+      // Make sure the assignment with that ID and email exists
+
+      const query = {
+        _id: new ObjectId(id),
+      };
+
+      const exist = await submittedCollection.findOne(query);
+
+      if (!exist) {
+        return res.status(404).send({
+          message: "Submission not found for this id.",
+        });
+      }
+
+      if (exist.email === email) {
+        return res
+          .status(403)
+          .send({ message: "you cant mark your own submission" });
+      }
+      const updateDoc = {
+        $set: result,
+      };
+
+      const resultUpdate = await submittedCollection.updateOne(
+        query,
+        updateDoc
+      );
+      res.send(resultUpdate);
     });
 
     // Connect the client to the server	(optional starting in v4.7)
