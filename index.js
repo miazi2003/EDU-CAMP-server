@@ -87,40 +87,45 @@ async function run() {
     });
 
     //create assignment api
-    app.post("/createAssignment", async (req, res) => {
+    app.post("/createAssignment", verifyToken , async (req, res) => {
       const newAssignment = req.body;
-
+      if(newAssignment.email !== req.decoded.email){
+        return res.status(403).send({message : "unAuthorized"})
+      }
       const result = await createCollection.insertOne(newAssignment);
       res.send(result);
     });
 
-    //delete assignment api
+   //delete assignment api
 
-   app.post("/deleteAssignment/:id",  async (req, res) => {
+   app.post("/deleteAssignment/:id", verifyToken ,   async (req, res) => {
   const id = req.params.id;
   const userEmail = req.body.email;
-
-
+if(userEmail !== req.decoded.email){
+  return res.status(403).send({message : "not"})
+}
   const query = {
     _id: new ObjectId(id),
     email: userEmail,
   };
+
   const result = await createCollection.deleteOne(query);
   res.send(result);
 });
 
     //view assignment api
 
-    app.get("/viewAssignment/:id", async (req, res) => {
+    app.get("/viewAssignment/:id", verifyToken , async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await createCollection.findOne(query);
       res.send(result);
+
     });
 
     //update function get api
 
-    app.get("/updateAllAssignment/:id", async (req, res) => {
+    app.get("/updateAllAssignment/:id", verifyToken , async (req, res) => {
       const id = req.params.id;
 
       const result = await createCollection.findOne({ _id: new ObjectId(id) });
@@ -166,7 +171,7 @@ async function run() {
     });
 
     //give mark get api
-    app.get("/markAssignment/:id", async (req, res) => {
+    app.get("/markAssignment/:id", verifyToken ,  async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await submittedCollection.findOne(query);
