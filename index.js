@@ -9,7 +9,7 @@ require("dotenv").config();
 
 app.use(
   cors({
-    origin: `http://localhost:5173`,
+    origin: ["http://localhost:5173" , "https://teal-cendol-a8aa91.netlify.app"],
     credentials: true,
   })
 );
@@ -30,7 +30,7 @@ const verifyToken = (req, res, next) => {
 
   jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
     if (err) {
-      return req.status(401).send({ message: "unauthorized access" });
+      return res.status(401).send({ message: "unauthorized access" });
     }
     req.decoded = decoded;
     console.log("decoded ", decoded);
@@ -49,6 +49,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+
     const database = client.db("edu-camp");
     const createCollection = database.collection("assignment-create");
     const submittedCollection = database.collection("assignment-submit");
@@ -64,8 +65,8 @@ async function run() {
       console.log(token);
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false,
-        sameSite: "Lax",
+        secure: true,
+        sameSite: "none",
       });
       res.send({ success: true });
     });
@@ -75,6 +76,13 @@ async function run() {
     app.get("/createAssignment", async (req, res) => {
       const cursor = createCollection.find();
       const result = await cursor.toArray();
+      res.send(result);
+    });
+
+
+      app.get("/createAssignmentAll", async (req, res) => {
+      const cursor = createCollection.find();
+      const result = await cursor.limit(4).toArray();
       res.send(result);
     });
 
@@ -88,19 +96,18 @@ async function run() {
 
     //delete assignment api
 
-    app.post("/deleteAssignment/:id", async (req, res) => {
-      const id = req.params.id;
-      const userEmail = req.body.email;
-      console.log(userEmail);
+   app.post("/deleteAssignment/:id",  async (req, res) => {
+  const id = req.params.id;
+  const userEmail = req.body.email;
 
-     
-      const query = {
-        _id: new ObjectId(id),
-        email: userEmail,
-      };
-      const result = await createCollection.deleteOne(query);
-      res.send(result);
-    });
+
+  const query = {
+    _id: new ObjectId(id),
+    email: userEmail,
+  };
+  const result = await createCollection.deleteOne(query);
+  res.send(result);
+});
 
     //view assignment api
 
@@ -167,11 +174,22 @@ async function run() {
     });
 
     //update assignment put api
-    app.put("/updateAssignment/:id", async (req, res) => {
+    app.put("/updateAssignment/:id", verifyToken ,  async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const newAssignment = req.body;
       console.log(newAssignment);
+
+
+       const existingAssignment = await createCollection.findOne({ _id: new ObjectId(id) });
+
+  if (!existingAssignment) {
+    return res.status(404).send({ message: "Assignment not found" });
+  }
+
+  if (existingAssignment.email !== req.decoded.email) {
+    return res.status(403).send({ message: "forbidden access" });
+  }
       const updateDoc = {
         $set: newAssignment,
       };
@@ -249,14 +267,23 @@ async function run() {
       res.send(result);
     });
 
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
-  } 
+
+
+       app.get("/deadline", async (req, res) => {
+     try{
+       const result = await createCollection
+        .find()
+        .sort({ deadline: 1 })
+        .limit(4)
+        .toArray();
+      res.send(result);
+     }catch(error){res.send({error : true , message : error.message})};
+      
+    });
+
+    
+  } finally {
+  }
 }
 run().catch(console.dir);
 
